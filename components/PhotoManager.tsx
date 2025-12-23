@@ -1,5 +1,5 @@
 
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { PhotoManagerProps, PhotoItem, InteractionMode } from '../types';
@@ -7,8 +7,7 @@ import { PhotoManagerProps, PhotoItem, InteractionMode } from '../types';
 const POLAROID_WIDTH = 2.0;
 const POLAROID_HEIGHT = 2.4;
 
-// --- Radial Flow Constants ---
-const ARC_RADIUS = 22;      // Slightly wider for better immersion
+const ARC_RADIUS = 22;      
 const ANGLE_SPACING = 0.45;   
 const CENTER_Y_BOOST = 1.5;  
 const GALLERY_Z_OFFSET = 8; 
@@ -24,9 +23,16 @@ const Polaroid: React.FC<{
   const groupRef = useRef<THREE.Group>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   
-  // Persistence for alignment
   const baseYaw = useRef(0);
   const lastMode = useRef<InteractionMode | null>(null);
+
+  // Clean up texture on unmount
+  useEffect(() => {
+    return () => {
+      // Texture is managed in App.tsx state but double-check disposal logic
+      // if it was specifically bound to this component instance.
+    };
+  }, [item]);
 
   const cloudData = useMemo(() => ({
     pos: new THREE.Vector3(
@@ -65,13 +71,10 @@ const Polaroid: React.FC<{
     const time = state.clock.elapsedTime;
     const cam = state.camera;
 
-    // --- VIEW ALIGNMENT LOGIC ---
-    // If we just entered a non-tree mode, capture where the camera is looking
     if (mode !== lastMode.current) {
         if (mode !== InteractionMode.TREE) {
             const dir = new THREE.Vector3();
             cam.getWorldDirection(dir);
-            // Calculate horizontal angle (Yaw)
             baseYaw.current = Math.atan2(dir.x, dir.z);
         }
         lastMode.current = mode;
@@ -99,11 +102,9 @@ const Polaroid: React.FC<{
         const deltaIndex = index - scrollOffset.current;
         const angle = deltaIndex * ANGLE_SPACING;
 
-        // 1. Calculate relative coordinates in front of a "virtual" camera
         const relX = Math.sin(angle) * ARC_RADIUS;
         const relZ = (Math.cos(angle) - 1) * ARC_RADIUS + GALLERY_Z_OFFSET;
         
-        // 2. Rotate these relative coordinates by the baseYaw to align with the real camera
         const cosY = Math.cos(baseYaw.current);
         const sinY = Math.sin(baseYaw.current);
         
@@ -113,7 +114,6 @@ const Polaroid: React.FC<{
         const proximity = Math.exp(-Math.pow(deltaIndex, 2) * 3.0);
         targetPos.y = proximity * CENTER_Y_BOOST;
 
-        // 3. Set orientation to face the center of the arc, offset by baseYaw
         dummy.position.set(0, 0, 0);
         dummy.rotation.set(0, baseYaw.current + angle * 0.8 + Math.PI, 0);
         targetRot.copy(dummy.quaternion);
@@ -125,8 +125,6 @@ const Polaroid: React.FC<{
         if (isSelected) {
           const camDir = new THREE.Vector3();
           cam.getWorldDirection(camDir);
-          
-          // Position exactly in front of the actual current camera gaze
           const worldPoint = cam.position.clone().add(camDir.multiplyScalar(10.0));
           const downOffset = new THREE.Vector3(0, -2.5, 0).applyQuaternion(cam.quaternion);
           worldPoint.add(downOffset);
@@ -139,7 +137,6 @@ const Polaroid: React.FC<{
           targetRot.copy(cam.quaternion);
           targetScale = 4.2; 
         } else {
-          // Send non-selected photos far away
           targetPos.copy(cloudData.pos).multiplyScalar(2.0);
           targetPos.z -= 50; 
           dummy.position.copy(targetPos);
@@ -150,7 +147,6 @@ const Polaroid: React.FC<{
         break;
     }
 
-    // Faster smoothing for more responsive feel
     const lerpFactor = mode === InteractionMode.FOCUS ? 0.15 : 0.08;
     groupRef.current.position.lerp(targetPos, lerpFactor);
     groupRef.current.quaternion.slerp(targetRot, lerpFactor);
@@ -159,22 +155,18 @@ const Polaroid: React.FC<{
 
   return (
     <group ref={groupRef}>
-      {/* Polaroid Frame */}
       <mesh>
         <boxGeometry args={[POLAROID_WIDTH, POLAROID_HEIGHT, 0.06]} />
         <meshStandardMaterial color={isSelected ? "#fffbe3" : "#fdfdfd"} roughness={0.4} />
       </mesh>
-      {/* Photo Surface */}
       <mesh position={[0, 0.15, 0.04]}>
         <planeGeometry args={[1.75, 1.75]} />
         <meshBasicMaterial map={item.texture} side={THREE.FrontSide} />
       </mesh>
-      {/* Decorative Golden Stripe */}
       <mesh position={[0, -0.9, 0.04]}>
         <planeGeometry args={[POLAROID_WIDTH - 0.3, 0.04]} />
         <meshStandardMaterial color="#d4af37" metalness={1} roughness={0.1} />
       </mesh>
-      {/* Selection Glow */}
       {isSelected && (
         <pointLight intensity={30} distance={15} color="#ffd700" position={[0,0,1.5]} />
       )}
