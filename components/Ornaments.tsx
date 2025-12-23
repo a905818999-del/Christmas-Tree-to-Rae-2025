@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { FoliageProps } from '../types';
 
 interface ExtendedOrnamentsProps extends FoliageProps {
-  isMobile: boolean;
+  isMobile?: boolean;
 }
 
 const Ornaments: React.FC<ExtendedOrnamentsProps> = ({ progress, isMobile }) => {
@@ -47,11 +47,11 @@ const Ornaments: React.FC<ExtendedOrnamentsProps> = ({ progress, isMobile }) => 
   useLayoutEffect(() => {
     if (sphereRef.current) {
         sphereData.forEach((d, i) => sphereRef.current!.setColorAt(i, d.color));
-        if (sphereRef.current.instanceColor) sphereRef.current.instanceColor.needsUpdate = true;
+        sphereRef.current.instanceColor!.needsUpdate = true;
     }
     if (cubeRef.current) {
         cubeData.forEach((d, i) => cubeRef.current!.setColorAt(i, d.color));
-        if (cubeRef.current.instanceColor) cubeRef.current.instanceColor.needsUpdate = true;
+        cubeRef.current.instanceColor!.needsUpdate = true;
     }
   }, [sphereData, cubeData]);
 
@@ -80,7 +80,7 @@ const Ornaments: React.FC<ExtendedOrnamentsProps> = ({ progress, isMobile }) => 
   return (
     <group>
       <instancedMesh ref={sphereRef} args={[undefined, undefined, S_COUNT]}>
-        <sphereGeometry args={[1, isMobile ? 8 : 12, isMobile ? 8 : 12]} />
+        <sphereGeometry args={[1, 12, 12]} />
         <meshStandardMaterial roughness={0.1} metalness={0.9} />
       </instancedMesh>
       <instancedMesh ref={cubeRef} args={[undefined, undefined, C_COUNT]}>
