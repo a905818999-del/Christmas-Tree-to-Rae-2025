@@ -1,0 +1,54 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grand Luxury Christmas Tree</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cinzel:wght@400;700&family=Dancing+Script:wght@400;700&family=Parisienne&family=Alex+Brush&family=Zhi+Mang+Xing&display=swap" rel="stylesheet">
+    <style>
+      body { margin: 0; padding: 0; overflow: hidden; background-color: #050505; }
+      canvas { width: 100vw; height: 100vh; display: block; touch-action: none; }
+      #video-preview {
+        transform: scaleX(-1);
+        opacity: 0.5;
+        border-radius: 8px;
+        pointer-events: none;
+      }
+      .font-christmas {
+        font-family: 'Great Vibes', cursive !important;
+      }
+      .font-serif-display {
+        font-family: 'Cinzel', serif !important;
+      }
+      .font-handwriting {
+        font-family: 'Zhi Mang Xing', cursive !important;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1",
+    "three": "https://aistudiocdn.com/three@^0.181.2",
+    "three-stdlib": "https://esm.sh/three-stdlib@2.30.0?external=three",
+    "maath": "https://esm.sh/maath@0.10.7?external=three",
+    "@react-three/drei": "https://aistudiocdn.com/@react-three/drei@^10.7.7",
+    "@react-three/fiber": "https://aistudiocdn.com/@react-three/fiber@^9.4.2",
+    "@mediapipe/tasks-vision": "https://esm.sh/@mediapipe/tasks-vision@0.10.9",
+    "@use-gesture/react": "https://esm.sh/@use-gesture/react@10.3.1?external=react,react-dom",
+    "framer-motion": "https://esm.sh/framer-motion@11.15.0?external=react,react-dom"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "name": "Grand Luxury Christmas Tree",
+  "description": "An interactive 3D particle system transitioning from chaos to a luxurious Christmas tree form using React Three Fiber.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
