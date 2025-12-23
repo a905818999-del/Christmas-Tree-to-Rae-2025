@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { FoliageProps } from '../types';
 
 interface ExtendedFoliageProps extends FoliageProps {
-  isMobile?: boolean;
+  isMobile: boolean;
 }
 
 const VERTEX_SHADER = `
@@ -15,6 +15,7 @@ const VERTEX_SHADER = `
     attribute vec3 color;
     varying vec3 vColor;
     varying float vAlpha;
+
     void main() {
       vColor = color;
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
@@ -29,6 +30,7 @@ const FRAGMENT_SHADER = `
     uniform float uTime;
     varying vec3 vColor;
     varying float vAlpha;
+
     void main() {
       vec2 coord = gl_PointCoord - 0.5;
       float dist = length(coord);
@@ -53,7 +55,7 @@ const FRAGMENT_SHADER = `
 `;
 
 const Foliage: React.FC<ExtendedFoliageProps> = ({ progress, isMobile }) => {
-  const count = isMobile ? 6000 : 15000;
+  const PARTICLE_COUNT = isMobile ? 6000 : 15000;
   const pointsRef = useRef<THREE.Points>(null);
   const shaderRef = useRef<THREE.ShaderMaterial>(null);
 
@@ -63,13 +65,13 @@ const Foliage: React.FC<ExtendedFoliageProps> = ({ progress, isMobile }) => {
   }), []);
 
   const data = useMemo(() => {
-    const chaos = new Float32Array(count * 3);
-    const tree = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
+    const chaos = new Float32Array(PARTICLE_COUNT * 3);
+    const tree = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const sizes = new Float32Array(PARTICLE_COUNT);
     const tempColor = new THREE.Color();
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
       const i3 = i * 3;
       const u = Math.random(); const v = Math.random();
       const theta = 2 * Math.PI * u; const phi = Math.acos(2 * v - 1);
@@ -98,7 +100,7 @@ const Foliage: React.FC<ExtendedFoliageProps> = ({ progress, isMobile }) => {
       colors[i3] = tempColor.r; colors[i3+1] = tempColor.g; colors[i3+2] = tempColor.b;
     }
     return { chaosPositions: chaos, treePositions: tree, colors, sizes };
-  }, [count]);
+  }, [PARTICLE_COUNT]);
 
   useLayoutEffect(() => {
     if (pointsRef.current) {
@@ -112,14 +114,14 @@ const Foliage: React.FC<ExtendedFoliageProps> = ({ progress, isMobile }) => {
   useFrame((state) => {
     if (!pointsRef.current || !shaderRef.current) return;
     const material = shaderRef.current;
-    if (material.uniforms) {
+    if (material && material.uniforms) {
       material.uniforms.uTime.value = state.clock.elapsedTime;
       material.uniforms.uPixelRatio.value = state.gl.getPixelRatio();
     }
     const positions = pointsRef.current.geometry.attributes.position.array as Float32Array;
     const { chaosPositions, treePositions } = data;
     const t = progress.current;
-    for (let i = 0; i < count * 3; i++) {
+    for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
       positions[i] = chaosPositions[i] + (treePositions[i] - chaosPositions[i]) * t;
     }
     pointsRef.current.geometry.attributes.position.needsUpdate = true;

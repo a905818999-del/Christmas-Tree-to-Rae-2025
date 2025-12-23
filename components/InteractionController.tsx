@@ -1,5 +1,6 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+// Add missing useMemo import to fix "Cannot find name 'useMemo'" error
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import { InteractionControllerProps, InteractionMode } from '../types';
 import * as THREE from 'three';
@@ -12,13 +13,14 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
   const [status, setStatus] = useState<string>("Initializing...");
   const [handPose, setHandPose] = useState<"OPEN" | "CLOSED" | "PINCH" | "NONE">("NONE");
   const [handCoords, setHandCoords] = useState<{x: number, y: number}>({x: 0.5, y: 0.5});
-  const [isAiSkipped, setIsAiSkipped] = useState(false);
-
+  
   const modeRef = useRef(mode);
   const totalPhotosRef = useRef(totalPhotos);
   const lastStateChangeTime = useRef(0);
   const poseCount = useRef({ pose: "NONE", count: 0 });
-  const REQUIRED_FRAMES = 12;
+  const REQUIRED_FRAMES = 10;
+
+  const isMobile = useMemo(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { totalPhotosRef.current = totalPhotos; }, [totalPhotos]);
@@ -26,7 +28,7 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
 
   const triggerModeChange = (newMode: InteractionMode) => {
     const now = performance.now();
-    if (newMode === modeRef.current || now - lastStateChangeTime.current < 1000) return;
+    if (newMode === modeRef.current || now - lastStateChangeTime.current < 1200) return;
     modeRef.current = newMode;
     lastStateChangeTime.current = now;
     setMode(newMode);
@@ -39,12 +41,11 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
     let activeStream: MediaStream | null = null;
     let isMounted = true;
 
-    // Timeout for AI loading
+    // 超时兜底：防止 AI 加载卡死 UI
     const timeoutId = setTimeout(() => {
-      if (status === "Initializing...") {
-        setStatus("Touch Mode");
-        setIsAiSkipped(true);
-      }
+        if (isMounted && status === "Initializing...") {
+            setStatus("Touch Mode");
+        }
     }, 8000);
 
     const initAI = async () => {
@@ -53,8 +54,8 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
           const landmarker = await HandLandmarker.createFromOptions(vision, {
             baseOptions: {
               modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-              // Use CPU on potentially weak tablets to avoid WebGL context loss
-              delegate: /iPad|iPhone|Android/i.test(navigator.userAgent) ? "CPU" : "GPU"
+              // 关键：移动端强制 CPU 推理，保住 WebGL 渲染
+              delegate: isMobile ? "CPU" : "GPU"
             },
             runningMode: "VIDEO",
             numHands: 1
@@ -62,35 +63,39 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
           
           if (!isMounted) return;
 
+          // 降低视频分辨率，减少 CPU 负荷
           const stream = await navigator.mediaDevices.getUserMedia({ 
-              video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
-          });
+              video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }
+          }).catch(() => null);
+
+          if (!stream) { setStatus("No Camera"); return; }
+
           activeStream = stream;
           if (videoRef.current) {
               videoRef.current.srcObject = stream;
               onStreamReady(stream);
           }
-          clearTimeout(timeoutId);
-          return landmarker;
+          
+          handLandmarker = landmarker;
+          setStatus("Active");
+          onVisionReady?.();
+          predictWebcam();
         } catch (e) {
-          console.warn("AI Init failed, falling back to touch", e);
           setStatus("Touch Mode");
-          setIsAiSkipped(true);
-          return null;
         }
     };
 
     const predictWebcam = async () => {
-      if (!handLandmarker || !videoRef.current) return;
+      if (!handLandmarker || !videoRef.current || !isMounted) return;
       const now = performance.now();
       try {
-        if (videoRef.current.currentTime > 0 && !videoRef.current.paused) {
+        if (videoRef.current.readyState >= 2) {
             const result = handLandmarker.detectForVideo(videoRef.current, now);
             if (result.landmarks && result.landmarks.length > 0) {
                 const landmarks = result.landmarks[0];
                 const wrist = landmarks[0]; 
                 const hX = 1.0 - wrist.x; const hY = wrist.y;
-                setHandCoords(p => (Math.abs(p.x - hX) > 0.02 || Math.abs(p.y - hY) > 0.02) ? {x: hX, y: hY} : p);
+                setHandCoords({x: hX, y: hY});
 
                 const tips = [4, 8, 12, 16, 20];
                 let distSum = 0; tips.forEach(i => distSum += Math.sqrt(Math.pow(landmarks[i].x - wrist.x, 2) + Math.pow(landmarks[i].y - wrist.y, 2)));
@@ -98,12 +103,13 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
                 const pDist = Math.sqrt(Math.pow(landmarks[4].x - landmarks[8].x, 2) + Math.pow(landmarks[4].y - landmarks[8].y, 2));
 
                 let rawPose: any = "OPEN";
-                if (avgDist < 0.17) rawPose = "CLOSED"; else if (pDist < 0.045) rawPose = "PINCH";
+                if (avgDist < 0.16) rawPose = "CLOSED"; else if (pDist < 0.05) rawPose = "PINCH";
                 if (poseCount.current.pose === rawPose) poseCount.current.count++; else poseCount.current = { pose: rawPose, count: 1 };
                 if (poseCount.current.count === 3) setHandPose(rawPose);
 
                 const confirmed = poseCount.current.count >= REQUIRED_FRAMES;
                 const isLocked = (now - lastStateChangeTime.current) < 1000;
+
                 if (confirmed && !isLocked) {
                     const pose = poseCount.current.pose;
                     if (modeRef.current === InteractionMode.FOCUS && pose === "OPEN") triggerModeChange(InteractionMode.CAROUSEL);
@@ -127,20 +133,14 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
       animationFrameId = requestAnimationFrame(predictWebcam);
     };
 
-    initAI().then(landmarker => {
-        if (!landmarker) return;
-        handLandmarker = landmarker;
-        setStatus("Active");
-        onVisionReady?.();
-        predictWebcam();
-    });
+    initAI();
 
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
       cancelAnimationFrame(animationFrameId);
       if (activeStream) activeStream.getTracks().forEach(t => t.stop());
       handLandmarker?.close();
-      clearTimeout(timeoutId);
     };
   }, []);
 
@@ -151,23 +151,21 @@ const InteractionController: React.FC<InteractionControllerProps> = ({
   }, [progressRef]);
 
   return (
-    <div className="absolute top-4 left-4 z-[90] flex flex-col items-start gap-3 pointer-events-none select-none">
-        <div className="bg-black/80 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-2xl">
-            <div className={`w-2 h-2 rounded-full ${status === 'Active' ? 'bg-green-400' : status === 'Touch Mode' ? 'bg-blue-400' : 'bg-yellow-500 animate-pulse'}`} />
-            <span className="text-[9px] text-white/60 font-mono uppercase tracking-[0.3em] font-bold">{status}</span>
+    <div className="absolute top-4 left-4 z-[90] flex flex-col items-start gap-4 pointer-events-none select-none">
+        <div className="bg-black/90 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full flex items-center gap-3 shadow-2xl">
+            <div className={`w-1.5 h-1.5 rounded-full ${status === 'Active' ? 'bg-green-400' : 'bg-yellow-500 animate-pulse'}`} />
+            <span className="text-[8px] text-white/70 font-mono uppercase tracking-[0.3em] font-bold">{status}</span>
         </div>
-
-        {!isAiSkipped && (
-          <div className="relative border border-white/5 rounded-sm overflow-hidden bg-black shadow-2xl">
-              <video ref={videoRef} id="video-preview" autoPlay playsInline muted className="w-24 h-18 object-cover opacity-30" />
-              {status === 'Active' && handPose !== 'NONE' && (
-                <div className="absolute w-2 h-2 bg-white rounded-full blur-[1px] shadow-[0_0_8px_#fff]" style={{ left: `${handCoords.x * 100}%`, top: `${handCoords.y * 100}%`, transform: 'translate(-50%, -50%)' }} />
+        {status === 'Active' && (
+          <div className="relative border border-white/10 rounded-lg overflow-hidden bg-black shadow-2xl w-24 h-18">
+              <video ref={videoRef} id="video-preview" autoPlay playsInline muted className="w-full h-full object-cover opacity-40" />
+              {handPose !== 'NONE' && (
+                <div className="absolute w-2 h-2 bg-yellow-400 rounded-full blur-[2px]" style={{ left: `${handCoords.x * 100}%`, top: `${handCoords.y * 100}%`, transform: 'translate(-50%, -50%)' }} />
               )}
           </div>
         )}
-        
-        <div className="text-[8px] text-white/40 uppercase tracking-widest leading-relaxed max-w-[140px]">
-           {status === 'Active' ? (mode === InteractionMode.FOCUS ? "Open Palm to Exit" : "Pinch to Select") : "Click tree to interact"}
+        <div className="text-[7px] text-white/30 uppercase tracking-widest leading-relaxed max-w-[140px] bg-black/40 p-2 rounded">
+           {status === 'Active' ? "Palm to Start • Pinch to Pick" : "Initialising Interactive AI..."}
         </div>
     </div>
   );
